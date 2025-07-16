@@ -1,0 +1,39 @@
+{
+  "frame_width": 620,
+  "homeowner_plates": ["R3944FG", "R5477DP"],
+  "guest_plates": [],
+  "verification_count": 3,
+  "scan_cooldown": 2.0,
+  "ultrasonic_threshold": 15,
+  "trig_pin": 18,
+  "echo_pin": 24,
+  "known_plates": {
+    "3944FG": "R",
+    "5477DP": "R"
+  },
+  "directories": {
+    "recognized_plates": "data/recognized_plates",
+    "debug_frames": "data/debug_frames",
+    "training_data": "data/training_data"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "data/system.log"
+  },
+  "plate_recognition": {
+    "min_confidence": 0.5,
+    "min_plate_length": 5,
+    "max_plate_length": 10,
+    "valid_patterns": [
+      "^[A-Z]{1,2}\\d{1,4}[A-Z]{1,3}$",
+      "^[A-Z]\\d{4}[A-Z]{2}$"
+    ]
+  },
+  "gate_control": {
+    "gate_open_time": 5.0,
+    "gate_close_delay": 2.0,
+    "servo_pin": 12,
+    "servo_open_angle": 90,
+    "servo_close_angle": 0
+  }
+}
