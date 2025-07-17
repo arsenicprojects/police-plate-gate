@@ -6,10 +6,19 @@ import time
 from pathlib import Path
 
 # Import local modules
+from src.gate_control import GateController
+from src.camera import CameraManager
+from src.utils import load_config, setup_logging, create_directories
+from src.plate_recognition import PlateRecognizer
+import numpy as np
+from src.DetectPlates import detectPlatesInScene
+from src.Preprocess import preprocess
+from src.DetectChars import detectCharsInPlates
+from Ultrasonic_sensor import UltrasonicSensor
 from camera import CameraManager
 from plate_recognition import PlateRecognizer
 from gate_control import GateController
-from utils import load_config, setup_logging, create_directories
+from src.imutils import load_config, setup_logging, create_directories
 
 def main():
     """Main function to run the automatic gate system"""
