@@ -208,13 +208,29 @@ class PlateDetector:
         """
         Preprocessing khusus untuk gambar ROI plat nomor sebelum dikirim ke OCR.
         Menggunakan grayscale, adaptive thresholding, median blur, dan resizing.
+        Menangani polaritas warna plat (hitam-putih vs. putih-hitam) secara dinamis.
         """
         gray = cv2.cvtColor(plate_roi, cv2.COLOR_BGR2GRAY)
         
+        # Tentukan jenis thresholding berdasarkan rata-rata intensitas area plat
+        # Jika rata-rata intensitas rendah (plat gelap, tulisan terang), gunakan BINARY_INV
+        # Jika rata-rata intensitas tinggi (plat terang, tulisan gelap), gunakan BINARY
+        avg_intensity = np.mean(gray)
+        
+        # Heuristik: Jika rata-rata intensitas di bawah ambang batas tertentu (misal 128),
+        # asumsikan itu adalah plat gelap dengan tulisan terang.
+        # Jika tidak, asumsikan itu plat terang dengan tulisan gelap.
+        if avg_intensity < 128: 
+            threshold_type = cv2.THRESH_BINARY_INV # Mengubah tulisan terang menjadi hitam, latar gelap menjadi putih
+            print("Detected dark plate (e.g., black plate with white text), using THRESH_BINARY_INV")
+        else: 
+            threshold_type = cv2.THRESH_BINARY # Mengubah tulisan gelap menjadi hitam, latar terang menjadi putih
+            print("Detected light plate (e.g., white plate with black text), using THRESH_BINARY")
+
         # Adaptive thresholding sangat efektif untuk mengatasi variasi pencahayaan
         # Ini membuat gambar menjadi biner (hitam-putih) secara adaptif
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                        cv2.THRESH_BINARY, 11, 2)
+                                        threshold_type, 11, 2)
         
         # Median blur untuk mengurangi noise 'salt-and-pepper' yang bisa muncul setelah thresholding
         # Kernel size harus ganjil, 3 atau 5 biasanya cukup
