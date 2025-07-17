@@ -26,10 +26,16 @@ class Config:
     # Konfigurasi OCR (Tesseract)
     # Pastikan Tesseract sudah terinstal dan path-nya benar
     TESSERACT_PATH = '/usr/bin/tesseract'
+    
+    # Bahasa Tesseract. Gunakan 'eng' (default) atau 'ind' jika tersedia.
+    # UNTUK AKURASI TERBAIK, setelah melatih Tesseract secara kustom,
+    # ganti ini dengan nama bahasa kustom Anda (misal: 'ind_lp')
+    TESSERACT_LANG = 'eng' 
+    
     # --oem 3: Menggunakan engine Tesseract terbaru (LSTM)
     # --psm 8: Page Segmentation Mode untuk single word/line of text (cocok untuk plat)
     # -c tessedit_char_whitelist: Membatasi karakter yang dikenali hanya pada huruf kapital dan angka
-    OCR_CONFIG = '--oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    OCR_CONFIG = f'-l {TESSERACT_LANG} --oem 3 --psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     
     # Konfigurasi deteksi plat nomor (berbasis kontur)
     MIN_PLATE_AREA = 1000 # Luas area minimum untuk dianggap sebagai kandidat plat
@@ -153,7 +159,9 @@ class PlateDetector:
         # Regex sudah dikompilasi untuk sedikit peningkatan performa (opsional tapi baik)
         self.plate_patterns = [
             re.compile(r'^[A-Z]{1,2}\d{1,4}[A-Z]{1,3}$'), 
-            re.compile(r'^[A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3}$') # Dengan spasi opsional
+            re.compile(r'^[A-Z]{1,2}\s?\d{1,4}\s?[A-Z]{1,3}$'), # Dengan spasi opsional
+            # Pola spesifik yang diminta: [Huruf] [Angka] [Angka] [Angka] [Angka] [Huruf] [Huruf]
+            re.compile(r'^[A-Z]\d{4}[A-Z]{2}$') # Contoh: R6978SF (tanpa spasi)
         ]
     
     def preprocess_for_detection(self, image):
@@ -199,18 +207,58 @@ class PlateDetector:
     def preprocess_for_ocr(self, plate_roi):
         """
         Preprocessing khusus untuk gambar ROI plat nomor sebelum dikirim ke OCR.
-        Menggunakan grayscale, adaptive thresholding, dan resizing.
+        Menggunakan grayscale, adaptive thresholding, median blur, dan resizing.
         """
         gray = cv2.cvtColor(plate_roi, cv2.COLOR_BGR2GRAY)
+        
         # Adaptive thresholding sangat efektif untuk mengatasi variasi pencahayaan
         # Ini membuat gambar menjadi biner (hitam-putih) secara adaptif
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                         cv2.THRESH_BINARY, 11, 2)
+        
+        # Median blur untuk mengurangi noise 'salt-and-pepper' yang bisa muncul setelah thresholding
+        # Kernel size harus ganjil, 3 atau 5 biasanya cukup
+        denoised = cv2.medianBlur(thresh, 3) 
+
+        # Opsional: Operasi morfologi untuk memperjelas karakter
+        # Kernel yang lebih besar bisa digunakan jika karakter terlalu tipis atau terputus
+        kernel = np.ones((2,2), np.uint8) # Kernel kecil untuk sedikit dilasi/erosi
+        # Dilasi: Menebalkan karakter, membantu menyambungkan bagian yang terputus
+        # Erosi: Menipiskan karakter, membantu memisahkan karakter yang menyatu
+        # Pilihan antara dilasi atau erosi tergantung pada karakteristik noise/font
+        # Untuk plat nomor yang seringkali memiliki karakter tipis, dilasi sering membantu
+        processed_img = cv2.dilate(denoised, kernel, iterations=1) 
+        # processed_img = cv2.erode(denoised, kernel, iterations=1) # Alternatif erosi
+
         # Resize gambar untuk meningkatkan akurasi OCR.
         # Tesseract seringkali bekerja lebih baik pada gambar dengan resolusi lebih tinggi.
-        resized = cv2.resize(thresh, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        resized = cv2.resize(processed_img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         return resized
     
+    def post_process_ocr_result(self, text):
+        """
+        Melakukan post-processing pada hasil OCR untuk memperbaiki kesalahan umum
+        berdasarkan karakteristik plat nomor.
+        """
+        # Normalisasi awal: hapus spasi awal/akhir, ubah ke huruf kapital, hilangkan semua spasi di tengah
+        clean_text = text.strip().upper().replace(' ', '').replace('\n', '')
+
+        # Aturan penggantian umum untuk kesalahan OCR pada plat nomor
+        # Ini adalah heuristik, mungkin perlu disesuaikan berdasarkan hasil OCR Anda
+        clean_text = clean_text.replace('O', '0') # Huruf O sering salah terbaca sebagai angka 0
+        clean_text = clean_text.replace('I', '1') # Huruf I sering salah terbaca sebagai angka 1
+        clean_text = clean_text.replace('L', '1') # Huruf L juga kadang salah terbaca sebagai angka 1
+        clean_text = clean_text.replace('S', '5') # Huruf S sering salah terbaca sebagai angka 5
+        clean_text = clean_text.replace('Z', '2') # Huruf Z sering salah terbaca sebagai angka 2
+        clean_text = clean_text.replace('B', '8') # Huruf B kadang salah terbaca sebagai angka 8
+        clean_text = clean_text.replace('G', '6') # Huruf G kadang salah terbaca sebagai angka 6
+        clean_text = clean_text.replace('Q', '0') # Huruf Q kadang salah terbaca sebagai angka 0
+
+        # Hapus karakter non-alphanumeric yang mungkin tersisa
+        clean_text = re.sub(r'[^A-Z0-9]', '', clean_text)
+        
+        return clean_text
+
     def extract_plate_text(self, image, bbox):
         """
         Ekstrak teks dari area plat yang terdeteksi menggunakan Tesseract OCR.
@@ -229,12 +277,14 @@ class PlateDetector:
         ocr_ready = self.preprocess_for_ocr(plate_roi)
         
         try:
-            # Panggil Tesseract untuk mengenali teks
-            text = pytesseract.image_to_string(ocr_ready, config=Config.OCR_CONFIG)
-            # Normalisasi teks: hapus spasi awal/akhir, ubah ke huruf kapital, hilangkan semua spasi di tengah
-            clean_text = text.strip().upper().replace(' ', '').replace('\n', '')
-            print(f"Raw OCR: '{text.strip()}' => Cleaned: '{clean_text}'")  # Debugging
-            return clean_text
+            # Panggil Tesseract untuk mengenali teks mentah
+            raw_text = pytesseract.image_to_string(ocr_ready, config=Config.OCR_CONFIG)
+            
+            # Lakukan post-processing pada hasil mentah
+            final_text = self.post_process_ocr_result(raw_text)
+            
+            print(f"Raw OCR: '{raw_text.strip()}' => Processed: '{final_text}'")  # Debugging
+            return final_text
         except Exception as e:
             print(f"OCR Error: {e}")
             return ""
