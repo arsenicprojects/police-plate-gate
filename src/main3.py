@@ -275,6 +275,33 @@ class PlateRecognitionSystem:
         # Set path Tesseract
         pytesseract.pytesseract.tesseract_cmd = Config.TESSERACT_PATH
         
+    def process_frame(self, frame):
+        """Proses frame untuk deteksi plat nomor"""
+        # Deteksi area plat terlebih dahulu
+        edges = self.plate_detector.preprocess_for_detection(frame)
+        plate_areas = self.plate_detector.detect_plate_areas(edges)
+        
+        detected_plates = []
+        
+        for area in plate_areas:
+            x, y, w, h = area
+            # Gambar bounding box hijau untuk area terdeteksi
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            
+            # Ekstrak teks hanya dari area yang terdeteksi sebagai plat
+            plate_text = self.plate_detector.extract_plate_text(frame, area)
+            
+            if plate_text and self.plate_detector.validate_plate_format(plate_text):
+                detected_plates.append({
+                    'text': plate_text,
+                    'bbox': (x, y, w, h)
+                })
+                # Tampilkan teks plat di atas bounding box
+                cv2.putText(frame, plate_text, (x, y-10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        return frame, detected_plates
+
     def handle_plate_detection(self, plate_text):
         """
         Menangani logika setelah plat nomor terdeteksi dan divalidasi.
