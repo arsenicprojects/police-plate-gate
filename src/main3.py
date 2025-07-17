@@ -48,6 +48,61 @@ class Config:
     # Daftar plat nomor yang diizinkan (statis dalam kode)
     AUTHORIZED_PLATES = ["R5477DP", "R6978SF"]
 
+class StepperMotor:
+    def __init__(self):
+        # Setup GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(Config.STEP_PIN, GPIO.OUT)
+        GPIO.setup(Config.DIR_PIN, GPIO.OUT)
+        GPIO.setup(Config.ENABLE_PIN, GPIO.OUT)
+        
+        # Disable motor saat startup
+        GPIO.output(Config.ENABLE_PIN, GPIO.HIGH)
+    
+    def step_motor(self, steps, direction):
+        """Gerakkan motor stepper"""
+        GPIO.output(Config.DIR_PIN, direction)
+        GPIO.output(Config.ENABLE_PIN, GPIO.LOW)  # Enable motor
+        
+        for _ in range(steps):
+            GPIO.output(Config.STEP_PIN, GPIO.HIGH)
+            time.sleep(Config.MOTOR_STEP_DELAY)
+            GPIO.output(Config.STEP_PIN, GPIO.LOW)
+            time.sleep(Config.MOTOR_STEP_DELAY)
+        
+        GPIO.output(Config.ENABLE_PIN, GPIO.HIGH)  # Disable motor
+    
+    def open_gate(self):
+        """Buka gerbang"""
+        self.step_motor(Config.GATE_OPEN_STEPS, GPIO.HIGH)
+    
+    def close_gate(self):
+        """Tutup gerbang"""
+        self.step_motor(Config.GATE_OPEN_STEPS, GPIO.LOW)
+    
+    def cleanup(self):
+        """Bersihkan GPIO"""
+        GPIO.cleanup()
+
+class Logger:
+    def __init__(self):
+        self.log_file = Config.LOG_FILE
+    
+    def log_access(self, plate_text, status):
+        """Log akses ke file"""
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'plate_number': plate_text,
+            'status': status,
+            'gate_action': 'opened' if status == 'authorized' else 'remained_closed'
+        }
+        
+        try:
+            with open(self.log_file, 'a') as f:
+                f.write(json.dumps(log_entry) + '\n')
+        except Exception as e:
+            print(f"Error logging: {e}")
+
 class PlateDetector:
     def __init__(self):
         self.plate_patterns = [
