@@ -54,6 +54,9 @@ class Config:
     os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
     os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
 
+    # Daftar plat nomor default (statis)
+    DEFAULT_PLATES = ["B1234ABC", "D5678XYZ", "AB1234CD", "L9876EFG"]
+
 class StepperMotor:
     def __init__(self):
         # Setup GPIO
@@ -102,8 +105,8 @@ class DatabaseManager:
                 with open(self.db_file, 'r') as f:
                     return json.load(f)
             else:
-                # Database default
-                default_plates = ["B1234ABC", "D5678XYZ", "AB1234CD", "L9876EFG"]
+                # Database default menggunakan data statis dari Config
+                default_plates = Config.DEFAULT_PLATES
                 self.save_database(default_plates)
                 return default_plates
         except Exception as e:
